@@ -1,0 +1,411 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gaze Ball App v6 (Modular)</title>
+    <script src="games.js"></script>
+    
+    <style>
+        body { margin: 0; background: #000; color: white; font-family: sans-serif; overflow: hidden; }
+        
+        #previewContainer { 
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%; 
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            background: #111; z-index: 10;
+        }
+
+        #previewVideo {
+            height: 60vh; /* Fix height to 60% of screen */
+            width: auto;
+            
+            /* Force 3:4 Aspect Ratio (Portrait) */
+            aspect-ratio: 3 / 4; 
+            
+            /* Ensure video fills the box (crop edges if needed) */
+            object-fit: cover; 
+            
+            border: 2px solid #555; 
+            border-radius: 10px;
+            transform: scaleX(-1); /* Mirror effect */
+            display: block;
+            margin: 0 auto; /* Center it */
+        }
+
+        #uiLayer { text-align: center; margin-top: 20px; width: 100%; }
+        
+        /* Styling for the Dropdown */
+        select {
+            padding: 10px; font-size: 1rem; width: 80%; max-width: 300px;
+            margin-bottom: 15px; border-radius: 5px;
+        }
+
+        button { 
+            padding: 15px 30px; font-size: 1.2rem; cursor: pointer; 
+            background: #28a745; color: white; border: none; border-radius: 5px; 
+            display: block; width: 80%; max-width: 300px; margin: 0 auto;
+        }
+
+        #downloadScreen {
+            display: none; position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            background: #111; z-index: 20; flex-direction: column; 
+            align-items: center; justify-content: center;
+        }
+        .dl-btn { background: #007bff; margin: 10px; }
+        
+        #testCanvas { 
+            display: none; position: absolute; top: 0; left: 0; 
+            background: black; z-index: 5; 
+        }
+    </style>
+</head>
+<body>
+
+    <div id="previewContainer">
+        <h2>Setup & Selection</h2>
+        <video id="previewVideo" autoplay muted playsinline></video>
+        
+        <div id="uiLayer">
+            <label>Select Test Pattern:</label><br>
+            <select id="gameSelect"></select>
+            <br>
+            <button id="startBtn">Start Recording</button>
+        </div>
+    </div>
+
+    <canvas id="testCanvas"></canvas>
+
+    <div id="downloadScreen">
+        <h2 id="finishTitle">Session Complete!</h2>
+        <button id="dlVideoBtn" class="dl-btn">1. Download Video</button>
+        <button id="dlCsvBtn" class="dl-btn">2. Download CSV</button>
+        <button onclick="location.reload()" style="background: #dc3545; margin-top:30px;">New Session</button>
+    </div>
+
+    <script>
+        // --- VARIABLES ---
+        const previewVideo = document.getElementById('previewVideo');
+        const startBtn = document.getElementById('startBtn');
+        const gameSelect = document.getElementById('gameSelect');
+        const previewContainer = document.getElementById('previewContainer');
+        const downloadScreen = document.getElementById('downloadScreen');
+        const canvas = document.getElementById('testCanvas');
+        const ctx = canvas.getContext('2d');
+        const dlVideoBtn = document.getElementById('dlVideoBtn');
+        const dlCsvBtn = document.getElementById('dlCsvBtn');
+
+        let mediaRecorder;
+        let recordedChunks = [];
+        let dataLog = []; 
+        let videoStartTime = 0; 
+        let wakeLock = null;
+        
+        // Store the currently selected game logic
+        let currentGame = null;
+
+        // --- INIT: POPULATE DROPDOWN ---
+        function initApp() {
+            // Check if games.js loaded correctly
+            if (typeof GAME_MODES === 'undefined') {
+                alert("Error: games.js not found! Make sure both files are in the same folder.");
+                return;
+            }
+
+            // Fill the dropdown with options from games.js
+            for (const key in GAME_MODES) {
+                const opt = document.createElement('option');
+                opt.value = key;
+                opt.innerText = GAME_MODES[key].name;
+                gameSelect.appendChild(opt);
+            }
+
+            initCamera();
+        }
+
+async function initCamera() {
+            try {
+                // Request 4:3 Portrait
+                const stream = await navigator.mediaDevices.getUserMedia({ 
+                    video: { 
+                        facingMode: "user", 
+                        width: { ideal: 720 },  
+                        height: { ideal: 960 }
+                    }, 
+                    audio: false 
+                });
+                
+                previewVideo.srcObject = stream;
+                
+                // Initialize Recorder
+                mediaRecorder = new MediaRecorder(stream, { mimeType: 'video/webm; codecs=vp8' });
+                mediaRecorder.ondataavailable = e => { if (e.data.size > 0) recordedChunks.push(e.data); };
+                
+                startBtn.addEventListener('click', startSession);
+
+            } catch (err) {
+                alert("Camera Error: " + err.message);
+            }
+        }
+
+        async function requestWakeLock() {
+            try { if ('wakeLock' in navigator) wakeLock = await navigator.wakeLock.request('screen'); } 
+            catch (err) { console.log(err); }
+        }
+
+        async function startSession() {
+            // 1. Get Selected Game
+            const selectedKey = gameSelect.value;
+            currentGame = GAME_MODES[selectedKey]; // Load logic from games.js
+
+            if (!mediaRecorder || !currentGame) return;
+            
+            await requestWakeLock();
+            mediaRecorder.start();
+            videoStartTime = Date.now();
+
+            previewContainer.style.display = 'none';
+            canvas.style.display = 'block';
+            resize();
+            runTestSequence();
+        }
+
+        async function runTestSequence() {
+            // Phase 1: Prep
+            await runPhase("PREP", 3000, (progress) => {
+                const sec = Math.ceil((1 - progress) * 3);
+                drawPrepScreen(currentGame.name, sec);
+            });
+
+            // Phase 2: Calibration 
+            await runPhase("CALIBRATION", 4000, () => {
+                drawCalibrationScreen();
+            });
+
+            // Phase 3: Rest
+            await runPhase("REST", 4000, (progress) => {
+                const sec = Math.ceil((1 - progress) * 4);
+                drawRestScreen(sec);
+            });
+
+            // Phase 4: TRACKING (DYNAMIC based on Selection)
+            // Use duration from games.js
+            await runPhase("TRACKING", currentGame.duration, (progress, now) => {
+                // CALL THE EXTERNAL SCRIPT
+                const pos = currentGame.getPos(progress, canvas.width, canvas.height);
+                drawBall(pos.x, pos.y, "lime");
+                return pos; // Return pos for logging
+            });
+
+            finishSession();
+        }
+
+        function runPhase(phaseName, duration, drawFn) {
+            return new Promise(resolve => {
+                const start = Date.now();
+                function loop() {
+                    const now = Date.now();
+                    const elapsed = now - start;
+                    const progress = Math.min(elapsed / duration, 1);
+
+                    ctx.fillStyle = "black";
+                    ctx.fillRect(0, 0, canvas.width, canvas.height);
+                    
+                    // Run draw function and capture returned position
+                    const pos = drawFn(progress, now);
+
+                    // LOGGING
+                    const videoTime = now - videoStartTime;
+                    
+                    if (phaseName === "CALIBRATION" || phaseName === "TRACKING") {
+                        let logX = 0, logY = 0;
+                        
+                        if (pos) {
+                            // If drawFn returned a position (Tracking), use it
+                            logX = pos.x;
+                            logY = pos.y;
+                        } else {
+                            // Default for Calibration (Center)
+                            logX = canvas.width/2;
+                            logY = canvas.height/2;
+                        }
+
+                        dataLog.push({
+                            time_ms: now,             
+                            video_time_ms: videoTime, 
+                            phase: phaseName,
+                            game: currentGame ? currentGame.name : "None", // Log which game was played
+                            x: logX.toFixed(1),
+                            y: logY.toFixed(1)
+                        });
+                    }
+
+                    if (progress < 1) requestAnimationFrame(loop);
+                    else resolve();
+                }
+                loop();
+            });
+        }
+
+        function drawBall(x, y, color) {
+            ctx.beginPath();
+            ctx.arc(x, y, 20, 0, Math.PI * 2);
+            ctx.fillStyle = color;
+            ctx.fill();
+        }
+
+        function drawWrappedText(ctx, text, x, y, maxWidth, lineHeight) {
+            const words = text.split(' ');
+            let line = '';
+
+            for(let n = 0; n < words.length; n++) {
+                const testLine = line + words[n] + ' ';
+                const metrics = ctx.measureText(testLine);
+                const testWidth = metrics.width;
+                
+                if (testWidth > maxWidth && n > 0) {
+                    ctx.fillText(line, x, y);
+                    line = words[n] + ' ';
+                    y += lineHeight;
+                } else {
+                    line = testLine;
+                }
+            }
+            ctx.fillText(line, x, y);
+        }
+
+
+        function drawPrepScreen(gameName, seconds) {
+            const cx = canvas.width / 2;
+            const cy = canvas.height / 2;
+            const w = canvas.width; // Short variable for cleaner math
+            const h = canvas.height;
+            ctx.textAlign = "center";
+            ctx.fillStyle = "white";
+
+            // 1. Headline: Game Name
+            const titleSize = Math.min(w * 0.10, 50); 
+            ctx.font = `bold ${titleSize}px Arial`; 
+            drawWrappedText(ctx, gameName, cx, cy - (h*0.2), w * 0.9, titleSize * 1.2);
+
+            // 2. Countdown
+            const countSize = Math.min(w * 0.15, 80);
+            ctx.font = `bold ${countSize}px Arial`;
+            ctx.fillStyle = "#4CAF50"; 
+            ctx.fillText(seconds, cx, cy);
+            
+            // Label for countdown
+            ctx.font = `${titleSize * 0.6}px Arial`;
+            ctx.fillText("Calibration starts in:", cx, cy - (countSize * 0.8));
+
+            // 3. Instructions 
+            const instrSize = Math.min(w * 0.05, 30); // 5% of width
+            ctx.font = `${instrSize}px Arial`;
+            ctx.fillStyle = "#cccccc"; 
+            
+            drawWrappedText(
+                ctx, "Keep your head and phone still during calibration", cx, cy + (h*0.2), w * 0.85, instrSize * 1.5 
+            ); 
+        }
+
+        function drawRestScreen(seconds) {
+            const cx = canvas.width / 2;
+            const cy = canvas.height / 2;
+            const w = canvas.width;
+            const h = canvas.height;
+
+            ctx.textAlign = "center";
+            ctx.fillStyle = "white";
+
+            // 1. Headline
+            const titleSize = Math.min(w * 0.10, 50);
+            ctx.font = `bold ${titleSize}px Arial`;
+            ctx.fillText("Rest your eyes", cx, cy - (h*0.15)); 
+
+            // 2. Instructions (Wrapped)
+            const instrSize = Math.min(w * 0.05, 30);
+            ctx.font = `${instrSize}px Arial`;
+            ctx.fillStyle = "#bbbbbb"; 
+            
+            drawWrappedText(
+                ctx, "Next: Follow the ball with your eyes", cx, cy, w * 0.8, instrSize * 1.5
+            );
+
+            // 3. Countdown
+            const countSize = Math.min(w * 0.08, 45);
+            ctx.font = `bold ${countSize}px Arial`;
+            ctx.fillStyle = "#FF9800"; 
+            ctx.fillText(`Tracking starts in ${seconds}`, cx, cy + (h*0.2));
+        }
+
+        function drawCalibrationScreen() {
+            const cx = canvas.width / 2;
+            const cy = canvas.height / 2;
+            const w = canvas.width;
+            const h = canvas.height;
+
+            ctx.textAlign = "center";
+            ctx.fillStyle = "white";
+
+            // 1. Draw the Red Ball
+            drawBall(cx, cy, "red");
+
+            // 2. Top Instruction 
+            const topSize = Math.min(w * 0.06, 35); 
+            ctx.font = `bold ${topSize}px Arial`;
+            
+            drawWrappedText(ctx,
+                "Calibration: Keep your head and phone still",
+                cx, cy - (h * 0.25), w * 0.9, topSize * 1.3);
+
+            // 3. Bottom Instruction 
+            const bottomSize = Math.min(w * 0.05, 30); 
+            ctx.font = `${bottomSize}px Arial`;
+            ctx.fillStyle = "#cccccc";
+            ctx.fillText("Focus on the red ball", cx, cy + (h * 0.25));
+        }
+
+
+
+        function resize() { canvas.width = window.innerWidth; canvas.height = window.innerHeight; }
+        window.addEventListener('resize', resize);
+
+        async function finishSession() {
+            mediaRecorder.stop();
+            if (wakeLock) await wakeLock.release();
+
+            canvas.style.display = 'none';
+            downloadScreen.style.display = 'flex';
+            
+            document.getElementById('finishTitle').innerText = `${currentGame.name} Complete!`;
+
+            setTimeout(() => {
+                const videoBlob = new Blob(recordedChunks, { type: 'video/webm' });
+                const videoUrl = URL.createObjectURL(videoBlob);
+                dlVideoBtn.onclick = () => {
+                    const a = document.createElement('a');
+                    a.href = videoUrl;
+                    a.download = `video_${currentGame.name.replace(/\s/g, "")}_${videoStartTime}.webm`;
+                    a.click();
+                };
+
+
+                let csv = "System_Time_ms,Video_Time_ms,Phase,Game_Type,Ball_X,Ball_Y\n";
+                dataLog.forEach(row => {
+                    csv += `${row.time_ms},${row.video_time_ms},${row.phase},${row.game},${row.x},${row.y}\n`;
+                });
+                const csvBlob = new Blob([csv], { type: 'text/csv' });
+                const csvUrl = URL.createObjectURL(csvBlob);
+                
+                dlCsvBtn.onclick = () => {
+                    const a = document.createElement('a');
+                    a.href = csvUrl;
+                    a.download = `log_${currentGame.name.replace(/\s/g, "")}_${videoStartTime}.csv`;
+                    a.click();
+                };
+            }, 500);
+        }
+        
+        initApp();
+    </script>
+</body>
+</html>
