@@ -22,9 +22,7 @@
             /* Force 3:4 Aspect Ratio (Portrait) */
             aspect-ratio: 3 / 4; 
             
-            /* Ensure video fills the box (crop edges if needed) */
-            object-fit: cover; 
-            
+            object-fit: cover;             
             border: 2px solid #555; 
             border-radius: 10px;
             transform: scaleX(-1); /* Mirror effect */
@@ -77,8 +75,17 @@
 
     <div id="downloadScreen">
         <h2 id="finishTitle">Session Complete!</h2>
-        <button id="dlVideoBtn" class="dl-btn">1. Download Video</button>
-        <button id="dlCsvBtn" class="dl-btn">2. Download CSV</button>
+        
+        <h3 id="statusText" style="margin-bottom: 20px;">Ready to Submit?</h3>
+
+        <button id="uploadBtn" class="dl-btn" style="background: #9C27B0;">☁️ Upload to Cloud</button>
+
+        <div id="backupDownloadDiv" style="display:none; margin-top:20px; border-top:1px solid #555; padding-top:20px; width:100%; text-align:center;">
+            <p style="color:#aaa; font-size:0.9rem;">Backup Options:</p>
+            <button id="dlVideoBtn" class="dl-btn">Download Video</button>
+            <button id="dlCsvBtn" class="dl-btn">Download CSV</button>
+        </div>
+
         <button onclick="location.reload()" style="background: #dc3545; margin-top:30px;">New Session</button>
     </div>
 
@@ -103,7 +110,7 @@
         // Store the currently selected game logic
         let currentGame = null;
 
-        // --- INIT: POPULATE DROPDOWN ---
+        // POPULATE DROPDOWN
         function initApp() {
             // Check if games.js loaded correctly
             if (typeof GAME_MODES === 'undefined') {
@@ -122,9 +129,9 @@
             initCamera();
         }
 
-async function initCamera() {
+        async function initCamera() {
             try {
-                // Request 4:3 Portrait
+                // Request 4:3 Portrait HD resolution
                 const stream = await navigator.mediaDevices.getUserMedia({ 
                     video: { 
                         facingMode: "user", 
@@ -187,10 +194,10 @@ async function initCamera() {
                 drawRestScreen(sec);
             });
 
-            // Phase 4: TRACKING (DYNAMIC based on Selection)
+            // Phase 4: Tracking
             // Use duration from games.js
             await runPhase("TRACKING", currentGame.duration, (progress, now) => {
-                // CALL THE EXTERNAL SCRIPT
+                // call the script for position
                 const pos = currentGame.getPos(progress, canvas.width, canvas.height);
                 drawBall(pos.x, pos.y, "lime");
                 return pos; // Return pos for logging
@@ -277,17 +284,17 @@ async function initCamera() {
         function drawPrepScreen(gameName, seconds) {
             const cx = canvas.width / 2;
             const cy = canvas.height / 2;
-            const w = canvas.width; // Short variable for cleaner math
+            const w = canvas.width;
             const h = canvas.height;
             ctx.textAlign = "center";
             ctx.fillStyle = "white";
 
-            // 1. Headline: Game Name
+            // Headline: Game Name
             const titleSize = Math.min(w * 0.10, 50); 
             ctx.font = `bold ${titleSize}px Arial`; 
             drawWrappedText(ctx, gameName, cx, cy - (h*0.2), w * 0.9, titleSize * 1.2);
 
-            // 2. Countdown
+            // Countdown
             const countSize = Math.min(w * 0.15, 80);
             ctx.font = `bold ${countSize}px Arial`;
             ctx.fillStyle = "#4CAF50"; 
@@ -297,8 +304,8 @@ async function initCamera() {
             ctx.font = `${titleSize * 0.6}px Arial`;
             ctx.fillText("Calibration starts in:", cx, cy - (countSize * 0.8));
 
-            // 3. Instructions 
-            const instrSize = Math.min(w * 0.05, 30); // 5% of width
+            // Instructions 
+            const instrSize = Math.min(w * 0.05, 30); 
             ctx.font = `${instrSize}px Arial`;
             ctx.fillStyle = "#cccccc"; 
             
@@ -316,12 +323,12 @@ async function initCamera() {
             ctx.textAlign = "center";
             ctx.fillStyle = "white";
 
-            // 1. Headline
+            // Headline
             const titleSize = Math.min(w * 0.10, 50);
             ctx.font = `bold ${titleSize}px Arial`;
             ctx.fillText("Rest your eyes", cx, cy - (h*0.15)); 
 
-            // 2. Instructions (Wrapped)
+            // Instructions
             const instrSize = Math.min(w * 0.05, 30);
             ctx.font = `${instrSize}px Arial`;
             ctx.fillStyle = "#bbbbbb"; 
@@ -330,7 +337,7 @@ async function initCamera() {
                 ctx, "Next: Follow the ball with your eyes", cx, cy, w * 0.8, instrSize * 1.5
             );
 
-            // 3. Countdown
+            // Countdown
             const countSize = Math.min(w * 0.08, 45);
             ctx.font = `bold ${countSize}px Arial`;
             ctx.fillStyle = "#FF9800"; 
@@ -346,22 +353,22 @@ async function initCamera() {
             ctx.textAlign = "center";
             ctx.fillStyle = "white";
 
-            // 1. Draw the Red Ball
+            // Draw the Red Ball
             drawBall(cx, cy, "red");
 
-            // 2. Top Instruction 
+            // Top Instruction 
             const topSize = Math.min(w * 0.06, 35); 
             ctx.font = `bold ${topSize}px Arial`;
             
             drawWrappedText(ctx,
                 "Calibration: Keep your head and phone still",
-                cx, cy - (h * 0.25), w * 0.9, topSize * 1.3);
+                cx, cy - (h * 0.10), w * 0.9, topSize * 1.3);
 
-            // 3. Bottom Instruction 
+            // Bottom Instruction 
             const bottomSize = Math.min(w * 0.05, 30); 
             ctx.font = `${bottomSize}px Arial`;
             ctx.fillStyle = "#cccccc";
-            ctx.fillText("Focus on the red ball", cx, cy + (h * 0.25));
+            ctx.fillText("Focus on the red ball", cx, cy + (h * 0.10));
         }
 
 
@@ -369,6 +376,61 @@ async function initCamera() {
         function resize() { canvas.width = window.innerWidth; canvas.height = window.innerHeight; }
         window.addEventListener('resize', resize);
 
+
+
+        const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzQWbF_Q4YwOeyUtfy__6HGEWMWhVx57YYN91vQWpADAT00Yqr6HelQmUU-0twxw8bcUg/exec"; // <--- PASTE YOUR URL HERE
+
+        async function uploadToDrive(videoBlob, csvString, filenameBase) {
+            const statusText = document.getElementById('statusText');
+            statusText.innerText = "Encrypting & Uploading... (Please Wait)";
+            statusText.style.color = "yellow";
+
+            // 1. Convert Video Blob to Base64
+            const reader = new FileReader();
+            reader.readAsDataURL(videoBlob);
+            
+            reader.onloadend = async function() {
+                // Remove the prefix to get raw string
+                const base64Video = reader.result.split(',')[1];
+
+                // 2. Prepare the Payload
+                const payload = {
+                    secret: "gojoisded", // to avoid random posts.
+                    filename: filenameBase,
+                    csvData: csvString,
+                    videoData: base64Video
+                };
+
+                try {
+                    // 3. Send to Google Script (Using POST)
+                    const response = await fetch(SCRIPT_URL, {
+                        method: "POST",
+                        body: JSON.stringify(payload)
+                    });
+
+                    // 4. Handle Success
+                    const text = await response.text();
+                    if (text.includes("Success")) {
+                        statusText.innerText = "✅ Upload Successful! You can close this tab.";
+                        statusText.style.color = "#4CAF50";
+                        // Hide the buttons so they don't upload twice
+                        document.getElementById('uploadBtn').style.display = 'none';
+                    } else {
+                        throw new Error("Server response: " + text);
+                    }
+                } catch (err) {
+                    console.error(err);
+                    statusText.innerText = "❌ Upload Failed. Please download files manually.";
+                    statusText.style.color = "red";
+                    // Show manual download buttons as backup
+                    document.getElementById('backupDownloadDiv').style.display = 'block';
+                }
+            };
+        }
+        
+
+
+        
         async function finishSession() {
             mediaRecorder.stop();
             if (wakeLock) await wakeLock.release();
@@ -378,30 +440,54 @@ async function initCamera() {
             
             document.getElementById('finishTitle').innerText = `${currentGame.name} Complete!`;
 
+            // Wait a moment for the video to finalize
             setTimeout(() => {
                 const videoBlob = new Blob(recordedChunks, { type: 'video/webm' });
-                const videoUrl = URL.createObjectURL(videoBlob);
-                dlVideoBtn.onclick = () => {
-                    const a = document.createElement('a');
-                    a.href = videoUrl;
-                    a.download = `video_${currentGame.name.replace(/\s/g, "")}_${videoStartTime}.webm`;
-                    a.click();
-                };
-
-
+                
+                // Prepare CSV String
                 let csv = "System_Time_ms,Video_Time_ms,Phase,Game_Type,Ball_X,Ball_Y\n";
                 dataLog.forEach(row => {
                     csv += `${row.time_ms},${row.video_time_ms},${row.phase},${row.game},${row.x},${row.y}\n`;
                 });
+
+                // Build the string: YYYYMMDD_HHMMSS
+                const d = new Date(videoStartTime);
+                const year = d.getFullYear();
+                const month = String(d.getMonth() + 1).padStart(2, '0'); // Months are 0-indexed
+                const day = String(d.getDate()).padStart(2, '0');
+                const hour = String(d.getHours()).padStart(2, '0');
+                const min = String(d.getMinutes()).padStart(2, '0');
+                const sec = String(d.getSeconds()).padStart(2, '0');
+                
+                const timeString = `${year}${month}${day}_${hour}${min}${sec}`;
+
+                // filename
+                const filenameBase = `GazeBall_${currentGame.name.replace(/\s/g, "")}_${timeString}`;
+
+                // Upload button
+                const uploadBtn = document.getElementById('uploadBtn');
+                uploadBtn.onclick = () => {
+                    uploadToDrive(videoBlob, csv, filenameBase);
+                };
+
+                // Backup download buttons ( In case uploading fails )
+                const videoUrl = URL.createObjectURL(videoBlob);
+                dlVideoBtn.onclick = () => {
+                    const a = document.createElement('a');
+                    a.href = videoUrl;
+                    a.download = filenameBase + ".webm";
+                    a.click();
+                };
+                
                 const csvBlob = new Blob([csv], { type: 'text/csv' });
                 const csvUrl = URL.createObjectURL(csvBlob);
-                
                 dlCsvBtn.onclick = () => {
                     const a = document.createElement('a');
                     a.href = csvUrl;
-                    a.download = `log_${currentGame.name.replace(/\s/g, "")}_${videoStartTime}.csv`;
+                    a.download = filenameBase + ".csv";
                     a.click();
                 };
+
             }, 500);
         }
         
