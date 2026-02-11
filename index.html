@@ -220,30 +220,25 @@
 
                     // LOGGING
                     const videoTime = now - videoStartTime;
-                    
-                    if (phaseName === "CALIBRATION" || phaseName === "TRACKING") {
-                        let logX = 0, logY = 0;
-                        
-                        if (pos) {
-                            // If drawFn returned a position (Tracking), use it
-                            logX = pos.x;
-                            logY = pos.y;
-                        } else {
-                            // Default for Calibration (Center)
-                            logX = canvas.width/2;
-                            logY = canvas.height/2;
-                        }
+                    let logX = -1, logY = -1; // default
 
-                        dataLog.push({
-                            time_ms: now,             
-                            video_time_ms: videoTime, 
-                            phase: phaseName,
-                            game: currentGame ? currentGame.name : "None", // Log which game was played
-                            x: logX.toFixed(1),
-                            y: logY.toFixed(1)
-                        });
+                    if (phaseName === "TRACKING" && pos) {
+                        logX = pos.x;
+                        logY = pos.y;
+                    } else if (phaseName === "CALIBRATION") {
+                        logX = canvas.width / 2;
+                        logY = canvas.height / 2;
                     }
 
+                    dataLog.push({
+                        time_ms: now,             
+                        video_time_ms: videoTime, 
+                        phase: phaseName,
+                        game: currentGame ? currentGame.name : "None", // Log which game was played
+                        x: logX.toFixed(1),
+                        y: logY.toFixed(1)
+                    });
+                    
                     if (progress < 1) requestAnimationFrame(loop);
                     else resolve();
                 }
@@ -493,5 +488,3 @@
     </script>
 </body>
 </html>
-
-
